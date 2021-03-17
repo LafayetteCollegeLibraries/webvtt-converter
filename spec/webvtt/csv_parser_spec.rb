@@ -27,6 +27,17 @@ RSpec.describe WebVTT::CSVParser do
     end
   end
 
+  context 'cue with illegal characters' do
+    subject { document.cues.first.to_s }
+
+    let(:csv_content) do
+      "Time Stamp,Speaker,Text,Style\n" \
+      "00:00:00-00:00:02,Cool Dog,Woof! & <Bark!,"
+    end
+
+    it { is_expected.to eq "00:00:00.000 --> 00:00:02.000\n<v Cool Dog>Woof! &amp; &lt;Bark!</v>" }
+  end
+
   context 'cue with multiple captions' do
     subject { document.cues.first.to_s }
 
@@ -70,6 +81,20 @@ RSpec.describe WebVTT::CSVParser do
     context 'without trailing milliseconds' do
       let(:start_time) { '00:00:30' }
       let(:end_time) { '00:00:32' }
+
+      it { is_expected.to eq formatted_cue }
+    end
+
+    context 'without hours' do
+      let(:start_time) { '00:30.000' }
+      let(:end_time) { '00:32.000' }
+
+      it { is_expected.to eq formatted_cue }
+    end
+
+    context 'only minutes and seconds' do
+      let(:start_time) { '00:30' }
+      let(:end_time) { '00:32' }
 
       it { is_expected.to eq formatted_cue }
     end
@@ -118,11 +143,12 @@ RSpec.describe WebVTT::CSVParser do
         '00:08:00-00:09:00,,Sup?,'
       end
 
-      it 'raises an InvalidTimestampSequenceError' do
+      it 'stores an InvalidTimestampSequenceError' do
         expect(error).to be_a(WebVTT::CSVParser::InvalidTimestampSequenceError)
         expect(error.message)
-          .to eq "[Lines 2, 3] Invalid timestamp sequence: " \
-                 "Current start timestamp is \"00:08:00.000\" and the previous one was \"00:12:00.000\""
+          .to eq "[Line 3] Invalid timestamp sequence: " \
+                 "Current starting timestamp (\"00:08:00.000\") can not be earlier " \
+                 "than the line previous (\"00:10:00.000\")"
       end
     end
 
@@ -132,7 +158,7 @@ RSpec.describe WebVTT::CSVParser do
         '00:10:00-00:08:00,,Hi!,'
       end
 
-      it 'raises an InvalidTimestampRangeError' do
+      it 'stores an InvalidTimestampRangeError' do
         expect(error).to be_a(WebVTT::CSVParser::InvalidTimestampRangeError)
         expect(error.message)
           .to eq %([Line 2] Invalid timestamp range: "00:08:00.000" can not come before "00:10:00.000")
@@ -144,10 +170,22 @@ RSpec.describe WebVTT::CSVParser do
         "Times,Content\n00:00:00-00:01:00,Hi there"
       end
 
-      it 'raises a MissingHeaderKeyError' do
+      it 'stores a MissingHeaderKeyError' do
         expect(error).to be_a(WebVTT::CSVParser::MissingHeaderKeyError)
         expect(error.message)
           .to eq '[Line 1] CSV is missing the following header keys: "Time Stamp", "Speaker", "Text", and "Style"'
+      end
+    end
+
+    describe 'missing timestamp' do
+      let(:csv_content) do
+        "Time Stamp,Speaker,Text,Style\n" \
+        "10:00,,Sup?,"
+      end
+
+      it 'stores a MissingTimestampError' do
+        expect(error).to be_a(WebVTT::CSVParser::MissingTimestampError)
+        expect(error.message).to eq '[Line 2] Missing start or end timestamp value from "10:00"'
       end
     end
   end

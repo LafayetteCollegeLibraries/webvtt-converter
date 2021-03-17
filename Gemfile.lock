@@ -2,12 +2,14 @@ PATH
   remote: .
   specs:
     webvtt-converter (0.0.0)
+      colorize (~> 0.8.1)
 
 GEM
   remote: https://rubygems.org/
   specs:
     ast (2.4.2)
     byebug (11.1.3)
+    colorize (0.8.1)
     diff-lcs (1.4.4)
     docile (1.3.5)
     parallel (1.20.1)

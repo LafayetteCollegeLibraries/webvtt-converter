@@ -145,8 +145,8 @@ module WebVTT
     end
 
     def timestamp_to_seconds(timestamp)
-      hours, minutes, seconds = timestamp.split(':').map(&:to_f)
-      (hours * 3600) + (minutes * 60) + seconds
+      hours, minutes, seconds = timestamp.split(':').map { |val| val&.to_f }
+      ((hours || 0) * 3600.0) + ((minutes || 0) * 60.0) + (seconds || 0.0)
     end
   end
 end

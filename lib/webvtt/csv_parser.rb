@@ -22,9 +22,9 @@ module WebVTT
     # Raised when the previous cue's end time is higher than the current cue's start time
     class InvalidTimestampSequenceError < ParsingError
       def initialize(current_cue:, previous_cue:, line_number:)
-        super("[Lines #{line_number - 1}, #{line_number}] Invalid timestamp sequence: " \
-              "Current start timestamp is \"#{current_cue.start_time}\" " \
-              "and the previous one was \"#{previous_cue.end_time}\"")
+        super("[Line #{line_number}] Invalid timestamp sequence: " \
+              "Current starting timestamp (\"#{current_cue.start_time}\") " \
+              "can not be earlier than the line previous (\"#{previous_cue.start_time}\")")
       end
     end
 
@@ -62,43 +62,61 @@ module WebVTT
     # Internal transient class for CSV rows to convert to Cues. Some rows may
     # have empty timestamps (used for adding more than one {WebVTT::Caption} to a cue).
     class Row
-      attr_reader :timestamp, :speaker, :style, :content, :line_number
+      attr_reader :timestamp, :speaker, :settings, :content, :line_number
 
-      def initialize(timestamp:, speaker:, style:, content:, line_number:)
+      def initialize(timestamp:, speaker:, content:, line_number:, settings: {})
         @timestamp = timestamp
         @speaker = speaker
-        @style = style
+        @settings = settings
         @content = content
         @line_number = line_number
       end
 
       def caption
-        WebVTT::Caption.new(speaker: speaker, text: content)
+        WebVTT::Caption.new(speaker: speaker, text: escaped_content)
       end
 
       def timestamp?
         !timestamp.nil? && timestamp != ''
       end
 
+      # @return [WebVTT::Cue, nil]
+      # @raise [WebVTT::CSVParser::MissingTimestampError] if only one timestamp is found
+      # @raise [WebVTT::CSVParser::TimestampFormattingError] if we receive a timestamp formatted in an unexpected way
       def cue
         return nil unless timestamp?
 
-        start_time, end_time = normalize_timestamp
-        WebVTT::Cue.new(start_time: start_time, end_time: end_time, captions: [caption])
+        start_time, end_time = normalize_timestamps
+        WebVTT::Cue.new(start_time: start_time, end_time: end_time, captions: [caption], settings: settings)
       end
 
       private
 
-      def normalize_timestamp
-        timestamp.to_s.split(/[-–—]+/).map(&:chomp).map do |raw|
-          case raw
-          when /^(\d{2}:)?\d{2}:\d{2}\.\d{3}$/ then raw
-          when /^(\d{2}:)?\d{2}:\d{2}$/        then "#{raw}.000"
-          when /^\d{2}\.\d{3}$/                then "00:00:#{raw}"
-          when /^\d{2}$/                       then "00:00:#{raw}.000"
-          else
-            raise TimestampFormattingError.new(value: raw, line: line_number)
-          end
+      # Strips cue text content of illegal characters
+      #
+      # @return [String]
+      # @see https://w3c.github.io/webvtt/#webvtt-cue-text-span
+      def escaped_content
+        content.gsub(/&/, '&amp;').gsub(/</, '&lt;').strip
+      end
+
+      def normalize_timestamps
+        timestamps = timestamp.to_s.split(/[-–—]+/).map(&:strip)
+        raise(MissingTimestampError, self) if timestamps.size < 2
+
+        timestamps.map { |raw| normalize_timestamp(raw) }
+      end
+
+      def normalize_timestamp(value)
+        case value
+        when /^\d{2}:\d{2}:\d{2}\.\d{3}$/ then value
+        when /^\d{2}:\d{2}:\d{2}$/        then "#{value}.000"
+        when /^\d{2}:\d{2}.\d{3}$/        then "00:#{value}"
+        when /^\d{2}:\d{2}$/              then "00:#{value}.000"
+        when /^\d{2}\.\d{3}$/             then "00:00:#{value}"
+        when /^\d{2}$/                    then "00:00:#{value}.000"
+        else
+          raise TimestampFormattingError.new(value: value, line: line_number)
         end
       end
     end
@@ -172,7 +190,6 @@ module WebVTT
     def extract_cue_from_row(row)
       cue = row.cue
       return if cue.nil?
-      raise(MissingTimestampError, row) if !cue.start_time || !cue.end_time
 
       cue
     end
@@ -216,7 +233,7 @@ module WebVTT
     # @option [Number] line
     # @return [WebVTT::CSVParser::Row]
     def row_from_csv(csv, line:)
-      row_args = %i[timestamp speaker style content].each_with_object({}) do |key, args|
+      row_args = %i[timestamp speaker settings content].each_with_object({}) do |key, args|
         args[key] = csv[@key_map[key]]
         args
       end
@@ -230,17 +247,16 @@ module WebVTT
     # @option [Number] line_number
     # @return [void]
     # @raise [InvalidTimestampRangeError] if current_cue's end_time is before its start_time
-    # @raise [InvalidTimestampSequenceError] if the previous cue's end_time comes before the current_cue's start_time
     #
     # rubocop:disable Layout/LineLength
     def validate_timestamps!(current_cue:, previous_cue:, line_number:)
       raise InvalidTimestampRangeError.new(cue: current_cue, line_number: line_number) if
-        current_cue.end_time_seconds <= current_cue.start_time_seconds
+        current_cue.end_time_seconds < current_cue.start_time_seconds
 
-      return if previous_cue.nil? || previous_cue == current_cue
+      return if previous_cue.nil? || current_cue == previous_cue
 
       raise InvalidTimestampSequenceError.new(current_cue: current_cue, previous_cue: previous_cue, line_number: line_number) if
-        current_cue.start_time_seconds <= previous_cue.end_time_seconds
+        previous_cue.start_time_seconds > current_cue.start_time_seconds
     end
     # rubocop:enable Layout/LineLength
   end

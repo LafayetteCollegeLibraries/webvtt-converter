@@ -1,0 +1,50 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# Usage:
+#   csv2vtt <input csv> [-o /path/to/output.vtt]
+lib = File.expand_path('../lib', __dir__)
+$LOAD_PATH.unshift(lib) unless $LOAD_PATH.include?(lib)
+
+require 'webvtt'
+require 'optparse'
+require 'colorize'
+
+# skipping a "style" row for now
+current_key_map = WebVTT::CSVParser::DEFAULT_KEY_MAP.reject { |k, _v| k == :style }
+options = {}
+
+OptionParser.new do |opts|
+  opts.banner = 'Usage: csv2vtt <input csv> [-o /path/to/output.vtt]'
+
+  opts.on('-o OUT', '--out=OUT') do |path|
+    options[:out] = path
+  end
+end.parse!
+
+input_filename = ARGV.first
+
+unless File.exist?(input_filename)
+  puts "file doesn't exist baby :("
+  exit 1
+end
+
+if options[:out].nil? || Dir.dir?(options[:out])
+  full_outpath = File.join(options[:out] || Dir.pwd, "#{File.basename(input_filename, '*.csv')}.vtt")
+  options[:out] = full_outpath
+end
+
+parser = WebVTT::CSVParser.new(path: input_filename, key_map: current_key_map)
+document = parser.parse
+
+if document.nil?
+  # print out errors
+  puts 'Encountered some errors:'
+
+  parser.errors.each do |error|
+    puts error.message.colorize(color: :black, background: :light_magenta)
+  end
+else
+  File.open(options[:out], 'wb') { |io| io.puts(document.to_s) }
+  puts "Successfully saved to #{options[:out]}"
+end
