@@ -2,125 +2,12 @@
 
 require 'csv'
 require 'webvtt/cue'
+require 'webvtt/csv_parser/errors'
+require 'webvtt/csv_parser/row'
 
 module WebVTT
   # Class for converting a CSV file to a WebVTT document.
   class CSVParser
-    # Base error for CSV parsing problems
-    class ParsingError < StandardError; end
-
-    # Raised when the timestamps of a single row are off (end time is lower than start time)
-    #
-    # @see {WebVTT::CSVParser#validate_timestamps!}
-    class InvalidTimestampRangeError < ParsingError
-      def initialize(cue:, line_number:)
-        super("[Line #{line_number}] Invalid timestamp range: " \
-              "\"#{cue.end_time}\" can not come before \"#{cue.start_time}\"")
-      end
-    end
-
-    # Raised when the previous cue's end time is higher than the current cue's start time
-    class InvalidTimestampSequenceError < ParsingError
-      def initialize(current_cue:, previous_cue:, line_number:)
-        super("[Line #{line_number}] Invalid timestamp sequence: " \
-              "Current starting timestamp (\"#{current_cue.start_time}\") " \
-              "can not be earlier than the line previous (\"#{previous_cue.start_time}\")")
-      end
-    end
-
-    # Error raised when one of our expected keys are missing. This can be resolved by passing
-    # a custom +key_map+ to the parser.
-    #
-    # @see {WebVTT::CSVParser.initialize}
-    class MissingHeaderKeyError < ParsingError
-      def initialize(missing_keys:)
-        super("[Line 1] CSV is missing the following header keys: #{format_missing_keys(missing_keys)}")
-      end
-
-      def format_missing_keys(keys)
-        quoted = keys.map { |v| %("#{v}") }
-        return quoted.join(' and ') if quoted.size <= 2
-
-        "#{quoted[0..-2].join(', ')}, and #{quoted[-1]}"
-      end
-    end
-
-    # Error raised when a row in the input CSV only includes a single timestamp
-    class MissingTimestampError < ParsingError
-      def initialize(row)
-        super(%([Line #{row.line_number}] Missing start or end timestamp value from "#{row.timestamp}"))
-      end
-    end
-
-    # Raised if a timestamp is formatted in a way we're not expecting.
-    class TimestampFormattingError < ParsingError
-      def initialize(value:, line:)
-        super(%([Line #{line}] Unable to parse timestamp from value "#{value}"))
-      end
-    end
-
-    # Internal transient class for CSV rows to convert to Cues. Some rows may
-    # have empty timestamps (used for adding more than one {WebVTT::Caption} to a cue).
-    class Row
-      attr_reader :timestamp, :speaker, :settings, :content, :line_number
-
-      def initialize(timestamp:, speaker:, content:, line_number:, settings: {})
-        @timestamp = timestamp
-        @speaker = speaker
-        @settings = settings
-        @content = content
-        @line_number = line_number
-      end
-
-      def caption
-        WebVTT::Caption.new(speaker: speaker, text: escaped_content)
-      end
-
-      def timestamp?
-        !timestamp.nil? && timestamp != ''
-      end
-
-      # @return [WebVTT::Cue, nil]
-      # @raise [WebVTT::CSVParser::MissingTimestampError] if only one timestamp is found
-      # @raise [WebVTT::CSVParser::TimestampFormattingError] if we receive a timestamp formatted in an unexpected way
-      def cue
-        return nil unless timestamp?
-
-        start_time, end_time = normalize_timestamps
-        WebVTT::Cue.new(start_time: start_time, end_time: end_time, captions: [caption], settings: settings)
-      end
-
-      private
-
-      # Strips cue text content of illegal characters
-      #
-      # @return [String]
-      # @see https://w3c.github.io/webvtt/#webvtt-cue-text-span
-      def escaped_content
-        content.gsub(/&/, '&amp;').gsub(/</, '&lt;').strip
-      end
-
-      def normalize_timestamps
-        timestamps = timestamp.to_s.split(/[-–—]+/).map(&:strip)
-        raise(MissingTimestampError, self) if timestamps.size < 2
-
-        timestamps.map { |raw| normalize_timestamp(raw) }
-      end
-
-      def normalize_timestamp(value)
-        case value
-        when /^\d{2}:\d{2}:\d{2}\.\d{3}$/ then value
-        when /^\d{2}:\d{2}:\d{2}$/        then "#{value}.000"
-        when /^\d{2}:\d{2}.\d{3}$/        then "00:#{value}"
-        when /^\d{2}:\d{2}$/              then "00:#{value}.000"
-        when /^\d{2}\.\d{3}$/             then "00:00:#{value}"
-        when /^\d{2}$/                    then "00:00:#{value}.000"
-        else
-          raise TimestampFormattingError.new(value: value, line: line_number)
-        end
-      end
-    end
-
     # By default, these are the CSV header keys we're expecting to be provided. The input CSV
     # may have other fields, but these four must be represented.
     DEFAULT_KEY_MAP = {
