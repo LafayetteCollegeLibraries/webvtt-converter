@@ -9,12 +9,20 @@ module WebVTT
     # Base error for CSV parsing problems
     class ParsingError < StandardError; end
 
-    # The timestamp sequences of either the previous timestamp and the current timestamp
-    # or the current row's start/end times are mismatched (start should always be < end)
+    # Raised when the timestamps of a single row are off (end time is lower than start time)
+    #
+    # @see {WebVTT::CSVParser#validate_timestamps!}
+    class InvalidTimestampRangeError < ParsingError
+      def initialize(cue:, line_number:)
+        super("Invalid timestamp range on Line #{line_number}: #{cue.end_time} can not come before #{cue.start_time}")
+      end
+    end
+
+    # Raised when the previous cue's end time is higher than the current cue's start time
     class InvalidTimestampSequenceError < ParsingError
-      def initialize(current_timestamp:, previous_timestamp:, line_number:)
-        super("Invalid timestamp sequence on Line #{line_number}: "\
-              "#{previous_timestamp} can not be greater than #{current_timestamp}")
+      def initialize(current_cue:, previous_cue:, line_number:)
+        super("Invalid timestamp sequence on Lines #{line_number - 1}, #{line_number}: "\
+              "current start timestamp is #{current_cue.start_time} and the previous one was #{previous_cue.end_time}")
       end
     end
 
@@ -46,14 +54,6 @@ module WebVTT
     # have empty timestamps (used for adding more than one {WebVTT::Caption} to a cue).
     class Row
       attr_reader :timestamp, :speaker, :style, :content, :line_number
-
-      def self.from_csv(row, line_number:, key_map:)
-        new(timestamp: row[key_map[:timestamp]],
-            speaker: row[key_map[:speaker]],
-            content: row[key_map[:content]],
-            style: row[key_map[:style]],
-            line_number: line_number)
-      end
 
       def initialize(timestamp:, speaker:, style:, content:, line_number:)
         @timestamp = timestamp
@@ -128,9 +128,9 @@ module WebVTT
       parsed_csv.each do |raw_row|
         begin
           line_number += 1
-          row = Row.from_csv(raw_row, key_map: @key_map, line_number: line_number)
+          row = row_from_csv(raw_row, line: line_number)
+          current_cue = extract_and_store_cue(row)
 
-          current_cue = extract_cue(row)
           validate_timestamps!(current_cue: current_cue, previous_cue: previous_cue, line_number: line_number)
 
           yield previous_cue if block_given? && previous_cue != current_cue
@@ -141,7 +141,7 @@ module WebVTT
         end
       end
 
-      @cues unless @errors.size
+      WebVTT::Document.new(cues: @cues) if @errors.size.zero?
     end
     # rubocop:enable Metrics/MethodLength
 
@@ -150,14 +150,12 @@ module WebVTT
     def check_headers!(supplied_headers)
       missing_keys = @key_map.values - supplied_headers
       raise MissingHeaderKeyError.new(missing_keys: missing_keys) unless missing_keys.empty?
-
-      @need_to_check_headers = false
     end
 
-    def extract_cue(row)
+    def extract_and_store_cue(row)
       cue = row.cue
 
-      if cue.nil? && @cues.size
+      if cue.nil? && !@cues.last.nil?
         caption = row.caption
         @cues.last.captions << caption
       else
@@ -167,27 +165,52 @@ module WebVTT
       @cues.last
     end
 
-    # @return [CSV::Table]
-    # @raise [WebVTT::CSVParser::MissingHeaderKeyError]
+    # Reads and parses the CSV file. If that file does not have all of the required headers
+    # we'll add the error to +@errors+ and return an empty array so the +#each+ block within +#parse+ doesn't fail.
+    #
+    # @return [CSV::Table, Array]
+    # @see {WebVTT::CSVParser#check_headers!}
     def parsed_csv
       parsed = CSV.parse(File.read(@csv_path), headers: true)
       check_headers!(parsed.headers)
 
       parsed
+    rescue MissingHeaderKeyError => e
+      @errors ||= [] # just in case
+      @errors << e
+
+      []
     end
 
-    def validate_timestamps!(current_cue:, previous_cue:, line_number:)
-      # check previous_row.end_time vs current_cue.start_time
-      if (previous_cue.nil? || current_cue == previous_cue) &&
-         current_cue.end_time_seconds <= current_cue.start_time_seconds
-        raise InvalidTimestampSequenceError.new(current_timestamp: current_cue.end_time,
-                                                previous_timestamp: current_cue.start_time,
-                                                line_number: line_number)
+    # generates a Row object from the CSV::Row object
+    #
+    # @param [CSV::Row] csv
+    # @param [Hash] options
+    # @option [Number] line
+    # @return [WebVTT::CSVParser::Row]
+    def row_from_csv(csv, line:)
+      row_args = %i[timestamp speaker style content].each_with_object({}) do |key, args|
+        args[key] = csv[@key_map[key]]
+        args
+      end
 
-      elsif current_cue.start_time_seconds <= previous_cue.end_time_seconds
-        raise InvalidTimestampSequenceError.new(current_timestamp: current_cue.start_time,
-                                                previous_timestamp: previous_cue.end_time,
-                                                line_number: line_number)
+      Row.new(line_number: line, **row_args)
+    end
+
+    # @param [Hash] options
+    # @option [WebVTT::Cue] current_cue
+    # @option [WebVTT::Cue] previous_cue
+    # @option [Number] line_number
+    # @return [void]
+    # @raise [InvalidTimestampRangeError] if current_cue's end_time is before its start_time
+    # @raise [InvalidTimestampSequenceError] if the previous cue's end_time comes before the current_cue's start_time
+    def validate_timestamps!(current_cue:, previous_cue:, line_number:)
+      raise InvalidTimestampRangeError.new(cue: current_cue, line_number: line_number) if
+        current_cue.end_time_seconds <= current_cue.start_time_seconds
+
+      unless previous_cue == current_cue || previous_cue.nil?
+        raise InvalidTimestampSequenceError.new(current_cue: current_cue, previous_cue: previous_cue, line_number: line_number) if
+          current_cue.start_time_seconds <= previous_cue.end_time_seconds
       end
     end
   end
