@@ -120,7 +120,9 @@ RSpec.describe WebVTT::CSVParser do
 
       it 'raises an InvalidTimestampSequenceError' do
         expect(error).to be_a(WebVTT::CSVParser::InvalidTimestampSequenceError)
-        expect(error.message).to eq "Invalid timestamp sequence on Lines 2, 3: current start timestamp is 00:08:00.000 and the previous one was 00:12:00.000"
+        expect(error.message)
+          .to eq "Invalid timestamp sequence on Lines 2, 3: " \
+                 "current start timestamp is 00:08:00.000 and the previous one was 00:12:00.000"
       end
     end
 
@@ -132,7 +134,8 @@ RSpec.describe WebVTT::CSVParser do
 
       it 'raises an InvalidTimestampRangeError' do
         expect(error).to be_a(WebVTT::CSVParser::InvalidTimestampRangeError)
-        expect(error.message).to eq "Invalid timestamp range on Line 2: 00:08:00.000 can not come before 00:10:00.000"
+        expect(error.message)
+          .to eq "Invalid timestamp range on Line 2: 00:08:00.000 can not come before 00:10:00.000"
       end
     end
 
@@ -143,7 +146,8 @@ RSpec.describe WebVTT::CSVParser do
 
       it 'raises a MissingHeaderKeyError' do
         expect(error).to be_a(WebVTT::CSVParser::MissingHeaderKeyError)
-        expect(error.message).to eq 'CSV is missing the following header keys: "Time Stamp", "Speaker", "Text", and "Style"'
+        expect(error.message)
+          .to eq 'CSV is missing the following header keys: "Time Stamp", "Speaker", "Text", and "Style"'
       end
     end
   end

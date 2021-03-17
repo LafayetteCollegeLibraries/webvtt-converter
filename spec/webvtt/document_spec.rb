@@ -1,11 +1,16 @@
 # frozen_string_literal: true
+
 RSpec.describe WebVTT::Document do
   let(:document) { described_class.new(cues: cues, style: style) }
   let(:style) { [] }
   let(:cues) do
     [
-      WebVTT::Cue.new(start_time: '00:00:00.000', end_time: '00:00:01.000', captions: [WebVTT::Caption.new(text: 'Woof!', speaker: 'Dog')]),
-      WebVTT::Cue.new(start_time: '00:00:05.000', end_time: '00:00:06.000', captions: [WebVTT::Caption.new(text: 'Meow!', speaker: 'Cat')])
+      WebVTT::Cue.new(start_time: '00:00:00.000',
+                      end_time: '00:00:01.000',
+                      captions: [WebVTT::Caption.new(text: 'Woof!', speaker: 'Dog')]),
+      WebVTT::Cue.new(start_time: '00:00:05.000',
+                      end_time: '00:00:06.000',
+                      captions: [WebVTT::Caption.new(text: 'Meow!', speaker: 'Cat')])
     ]
   end
 

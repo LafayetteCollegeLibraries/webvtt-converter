@@ -204,14 +204,17 @@ module WebVTT
     # @return [void]
     # @raise [InvalidTimestampRangeError] if current_cue's end_time is before its start_time
     # @raise [InvalidTimestampSequenceError] if the previous cue's end_time comes before the current_cue's start_time
+    #
+    # rubocop:disable Layout/LineLength
     def validate_timestamps!(current_cue:, previous_cue:, line_number:)
       raise InvalidTimestampRangeError.new(cue: current_cue, line_number: line_number) if
         current_cue.end_time_seconds <= current_cue.start_time_seconds
 
-      unless previous_cue == current_cue || previous_cue.nil?
-        raise InvalidTimestampSequenceError.new(current_cue: current_cue, previous_cue: previous_cue, line_number: line_number) if
-          current_cue.start_time_seconds <= previous_cue.end_time_seconds
-      end
+      return if previous_cue.nil? || previous_cue == current_cue
+
+      raise InvalidTimestampSequenceError.new(current_cue: current_cue, previous_cue: previous_cue, line_number: line_number) if
+        current_cue.start_time_seconds <= previous_cue.end_time_seconds
     end
+    # rubocop:enable Layout/LineLength
   end
 end

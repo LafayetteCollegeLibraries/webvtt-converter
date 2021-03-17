@@ -1,6 +1,7 @@
 # frozen_string_literal: true
+
 module WebVTT
-  # Container document for
+  # Container class to combine style + cue nodes in a single document
   class Document
     attr_accessor :cues, :style
 
@@ -16,7 +17,7 @@ module WebVTT
     private
 
     def header
-      "WEBVTT"
+      'WEBVTT'
     end
   end
 end
