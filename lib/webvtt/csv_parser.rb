@@ -14,15 +14,17 @@ module WebVTT
     # @see {WebVTT::CSVParser#validate_timestamps!}
     class InvalidTimestampRangeError < ParsingError
       def initialize(cue:, line_number:)
-        super("Invalid timestamp range on Line #{line_number}: #{cue.end_time} can not come before #{cue.start_time}")
+        super("[Line #{line_number}] Invalid timestamp range: " \
+              "\"#{cue.end_time}\" can not come before \"#{cue.start_time}\"")
       end
     end
 
     # Raised when the previous cue's end time is higher than the current cue's start time
     class InvalidTimestampSequenceError < ParsingError
       def initialize(current_cue:, previous_cue:, line_number:)
-        super("Invalid timestamp sequence on Lines #{line_number - 1}, #{line_number}: "\
-              "current start timestamp is #{current_cue.start_time} and the previous one was #{previous_cue.end_time}")
+        super("[Lines #{line_number - 1}, #{line_number}] Invalid timestamp sequence: " \
+              "Current start timestamp is \"#{current_cue.start_time}\" " \
+              "and the previous one was \"#{previous_cue.end_time}\"")
       end
     end
 
@@ -32,7 +34,7 @@ module WebVTT
     # @see {WebVTT::CSVParser.initialize}
     class MissingHeaderKeyError < ParsingError
       def initialize(missing_keys:)
-        super("CSV is missing the following header keys: #{format_missing_keys(missing_keys)}")
+        super("[Line 1] CSV is missing the following header keys: #{format_missing_keys(missing_keys)}")
       end
 
       def format_missing_keys(keys)
@@ -43,10 +45,17 @@ module WebVTT
       end
     end
 
+    # Error raised when a row in the input CSV only includes a single timestamp
+    class MissingTimestampError < ParsingError
+      def initialize(row)
+        super(%([Line #{row.line_number}] Missing start or end timestamp value from "#{row.timestamp}"))
+      end
+    end
+
     # Raised if a timestamp is formatted in a way we're not expecting.
     class TimestampFormattingError < ParsingError
       def initialize(value:, line:)
-        super("Line #{line}: Unable to parse timestamp from value '#{value}'")
+        super(%([Line #{line}] Unable to parse timestamp from value "#{value}"))
       end
     end
 
@@ -147,15 +156,33 @@ module WebVTT
 
     private
 
+    # Checks the incoming CSV headers against the key_map's values and alerts
+    # us if any keys are missing.
+    #
+    # @param [Array<Symbol>] supplied_headers
+    # @return [void]
+    # @raise [WebVTT::CSVParser::MissingHeaderKeyError]
     def check_headers!(supplied_headers)
       missing_keys = @key_map.values - supplied_headers
       raise MissingHeaderKeyError.new(missing_keys: missing_keys) unless missing_keys.empty?
     end
 
-    def extract_and_store_cue(row)
+    # @param [WebVTT::CSVParser::Row] row
+    # @return [WebVTT::Cue,nil]
+    def extract_cue_from_row(row)
       cue = row.cue
+      return if cue.nil?
+      raise(MissingTimestampError, row) if !cue.start_time || !cue.end_time
 
-      if cue.nil? && !@cues.last.nil?
+      cue
+    end
+
+    # @param [WebVTT::CSVParser::Row] row
+    # @return [WebVTT::Cue]
+    def extract_and_store_cue(row)
+      cue = extract_cue_from_row(row)
+
+      if cue.nil? && !@cues.empty?
         caption = row.caption
         @cues.last.captions << caption
       else
