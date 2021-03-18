@@ -2,6 +2,11 @@ Metrics/BlockLength:
   Exclude:
     - 'spec/**/*'
 
+Style/ClassAndModuleChildren:
+  Exclude:
+    - 'lib/webvtt/csv_parser/cli.rb'
+
 Style/StringLiterals:
   Exclude:
     - 'spec/**/*'
+

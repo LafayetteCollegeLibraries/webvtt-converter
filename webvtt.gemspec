@@ -9,7 +9,7 @@ Gem::Specification.new do |spec|
   spec.version       = WebVTT::VERSION
   spec.authors       = ['a. malantonio']
   spec.email         = ['malantoa@lafayette.edu']
-  spec.required_ruby_version = '>= 2.4.3'
+  spec.required_ruby_version = '>= 2.6.3'
 
   spec.summary       = 'Convert CSV files to WebVTT ones'
   spec.license       = 'MIT'
