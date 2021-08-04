@@ -42,6 +42,8 @@ module WebVTT
       parsed_csv.each do |raw_row|
         begin
           line_number += 1
+          next if empty?(raw_row)
+
           row = row_from_csv(raw_row, line: line_number)
           current_cue = extract_and_store_cue(row)
 
@@ -111,6 +113,14 @@ module WebVTT
       @errors << e
 
       []
+    end
+
+    # Is this line a parsed blank line?
+    #
+    # @param [CSV::Row]
+    # @return [true, false]
+    def empty?(row)
+      row.fields.reject(&:nil?).empty?
     end
 
     # generates a Row object from the CSV::Row object
