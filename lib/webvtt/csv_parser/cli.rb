@@ -38,7 +38,7 @@ class WebVTT::CSVParser::CLI
   end
 
   def handle_errors(errors)
-    message "Encountered #{errors.count} error#{'s' unless errors.count == 1}:s"
+    message "Encountered #{errors.count} error#{'s' unless errors.count == 1}:"
     errors.each { |error| error_message error.message }
 
     exit 1
