@@ -54,6 +54,7 @@ module WebVTT
         case value
         when /^\d{2}:\d{2}:\d{2}\.\d{3}$/ then value
         when /^\d{2}:\d{2}:\d{2}$/        then "#{value}.000"
+        when /^\d{1}:\d{2}:\d{2}$/        then "0#{value}.000"
         when /^\d{2}:\d{2}.\d{3}$/        then "00:#{value}"
         when /^\d{2}:\d{2}$/              then "00:#{value}.000"
         when /^\d{2}\.\d{3}$/             then "00:00:#{value}"
